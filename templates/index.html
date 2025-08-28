@@ -1,0 +1,197 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chatbot - Générateur de Fiches de Poste</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f7f9fc;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+    }
+    label {
+      display: block;
+      margin: 15px 0 5px;
+      font-weight: 600;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+    button {
+      margin-top: 20px;
+      padding: 12px 20px;
+      background: #0078d7;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #005a9e;
+    }
+    #result {
+      margin-top: 30px;
+      padding: 20px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      background: #f9f9f9;
+      white-space: pre-wrap;
+    }
+    .btn-download {
+      display: block;
+      margin: 15px auto;
+      padding: 10px 20px;
+      background: #27ae60;
+      color: white;
+      text-align: center;
+      width: fit-content;
+      border-radius: 6px;
+      text-decoration: none;
+    }
+    .btn-download:hover {
+      background: #219653;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📄 Générateur de Fiches de Poste</h1>
+
+    <form id="jobForm">
+      <label>Titre du poste *</label>
+      <input type="text" id="title" name="title" required />
+
+      <label>Département</label>
+      <input type="text" id="department" name="department" />
+
+      <label>Niveau d'expérience</label>
+      <select id="seniority" name="seniority">
+        <option value="junior">Junior</option>
+        <option value="intermédiaire">Intermédiaire</option>
+        <option value="senior">Senior</option>
+        <option value="expert">Expert</option>
+      </select>
+
+      <label>Localisation</label>
+      <input type="text" id="location" name="location" />
+
+      <label>Type de contrat</label>
+      <select id="contract_type" name="contract_type">
+        <option>CDI</option>
+        <option>CDD</option>
+        <option>Freelance</option>
+        <option>Stage</option>
+      </select>
+
+      <label>Compétences clés (séparées par des virgules)</label>
+      <textarea id="key_skills" name="key_skills"></textarea>
+
+      <label>Tranche salariale</label>
+      <input type="text" id="salary_band" name="salary_band" placeholder="ex: 45k-60k€" />
+
+      <label>Avantages (séparés par des virgules)</label>
+      <textarea id="benefits" name="benefits"></textarea>
+
+      <label>Contexte entreprise</label>
+      <textarea id="company_context" name="company_context" placeholder="ex: Startup en croissance dans la santé digitale"></textarea>
+
+      <label>Politiques RH</label>
+      <textarea id="policies" name="policies" placeholder="ex: Télétravail, inclusion, mixité"></textarea>
+
+      <label>Langue</label>
+      <select id="language" name="language">
+        <option value="fr">Français</option>
+        <option value="en">Anglais</option>
+      </select>
+
+      <label>Style (template)</label>
+      <select id="template" name="template">
+        <option value="startup">Startup 🚀</option>
+        <option value="standard">Standard 📄</option>
+        <option value="corporate">Entreprise 🏢</option>
+        <option value="creative">Créatif 🎨</option>
+        <option value="tech">Tech 💻</option>
+      </select>
+
+      <button type="submit">Générer la fiche de poste</button>
+    </form>
+
+    <div id="result" style="display: none;">
+      <h2>Fiche de poste générée</h2>
+      <div id="markdown-output"></div>
+      <a id="download-link" class="btn-download" style="display: none;">📥 Télécharger en Markdown</a>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("jobForm");
+    const resultDiv = document.getElementById("result");
+    const markdownOutput = document.getElementById("markdown-output");
+    const downloadLink = document.getElementById("download-link");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData);
+
+      // Traiter les listes
+      data.key_skills = data.key_skills ? data.key_skills.split(",").map(s => s.trim()) : [];
+      data.benefits = data.benefits ? data.benefits.split(",").map(s => s.trim()) : [];
+
+      try {
+        const response = await fetch("http://127.0.0.1:8000/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) throw new Error("Erreur API");
+
+        const result = await response.json();
+        
+        // Afficher en Markdown
+        markdownOutput.innerHTML = marked.parse(result.markdown);
+        resultDiv.style.display = "block";
+
+        // Générer le téléchargement
+        const blob = new Blob([result.markdown], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.download = `fiche_poste_${data.title.replace(/\s+/g, "_")}.md`;
+        downloadLink.style.display = "block";
+
+      } catch (error) {
+        markdownOutput.innerHTML = `<p style="color:red;">Erreur : ${error.message}</p>`;
+        resultDiv.style.display = "block";
+      }
+    });
+  </script>
+</body>
+</html>
