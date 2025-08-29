@@ -21,12 +21,12 @@ path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
 # === Configuration PDF ===
 path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
 config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
-import pdfkit  # ✅ Import après configuration
+import pdfkit  #  Import après configuration
 
 # === Initialisation FastAPI ===
 app = FastAPI(title="Chatbot Générateur de Fiches de Poste", version="1.2.0")
 
-# ✅ Middleware CORS (une seule fois)
+#  Middleware CORS (une seule fois)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,7 +36,7 @@ app.add_middleware(
 
 # === Configuration avec GROQ ===
 client = OpenAI(
-    base_url="https://api.groq.com/openai/v1",  # ✅ URL corrigée (pas d'espaces)
+    base_url="https://api.groq.com/openai/v1",  #  URL corrigée (pas d'espaces)
     api_key=os.getenv("GROQ_API_KEY")
 )
 
@@ -93,13 +93,13 @@ Ton : formel, structuré, précis.
         "description": "Style original, pour métiers créatifs (design, marketing, com)",
         "prompt": """
 # Structure
-- 🎨 Le poste en 1 phrase
-- 🧠 Ce que tu feras au quotidien
-- 🎯 Ce qu’on attend de toi
-- 🧰 Tes super-pouvoirs (compétences)
-- 🌈 Notre univers (culture, équipe)
-- 🎁 Ce qu’on t’offre
-- 📬 Viens créer avec nous !
+-  Le poste en 1 phrase
+-  Ce que tu feras au quotidien
+-  Ce qu’on attend de toi
+-  Tes super-pouvoirs (compétences)
+-  Notre univers (culture, équipe)
+-  Ce qu’on t’offre
+-  Viens créer avec nous !
 
 Ton : créatif, vivant, inspirant. Utilise des emojis avec parcimonie.
         """
