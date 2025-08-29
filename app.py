@@ -1,31 +1,47 @@
 # app.py
+import os
+import re
+import html
+from datetime import datetime
+from typing import List
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
-from typing import List
-from datetime import datetime
-import os
 from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-
-
-
+from fastapi.responses import Response
+from fastapi.middleware.cors import CORSMiddleware
 # Charger les variables d'environnement
 load_dotenv()
+# 1. Import de pdfkit
+import pdfkit
+path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
 
+# === Configuration PDF ===
+path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
+config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
+import pdfkit  # ✅ Import après configuration
+
+# === Initialisation FastAPI ===
 app = FastAPI(title="Chatbot Générateur de Fiches de Poste", version="1.2.0")
 
-# === Configuration avec GROQ (alternative gratuite à OpenAI) ===
-client = OpenAI(
-    base_url="https://api.groq.com/openai/v1",  # ✅ URL corrigée (pas d'espaces)
-    api_key=os.getenv("GROQ_API_KEY")           # ✅ Clé chargée depuis .env
+# ✅ Middleware CORS (une seule fois)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Vérification de la clé
+# === Configuration avec GROQ ===
+client = OpenAI(
+    base_url="https://api.groq.com/openai/v1",  # ✅ URL corrigée (pas d'espaces)
+    api_key=os.getenv("GROQ_API_KEY")
+)
+
 if not client.api_key:
-    raise RuntimeError(
-        "Clé GROQ manquante. Ajoute GROQ_API_KEY dans le fichier .env"
-    )
+    raise RuntimeError("Clé GROQ manquante. Ajoute GROQ_API_KEY dans le fichier .env")
 
 # === Templates personnalisés ===
 TEMPLATES = {
@@ -166,17 +182,13 @@ def list_templates():
 @app.post("/generate")
 def generate_description(job: JobInput):
     try:
-        # Récupérer le template
         template_data = TEMPLATES[job.template]
         instructions = template_data["prompt"]
-
-        # Remplacer les placeholders
         instructions = instructions.format(
             title=job.title,
             department=job.department or "non spécifié"
         )
 
-        # Données
         skills_str = ", ".join(job.key_skills) if job.key_skills else "À définir"
         benefits_str = ", ".join(job.benefits) if job.benefits else "Non spécifiés"
         salary_info = f"Rémunération : {job.salary_band}. " if job.salary_band else ""
@@ -200,7 +212,6 @@ def generate_description(job: JobInput):
 **Longueur :** {job.length}
         """
 
-        # Appel à Groq (modèle Llama 3 70B)
         response = client.chat.completions.create(
             model="llama3-70b-8192",
             messages=[
@@ -224,16 +235,96 @@ def generate_description(job: JobInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur : {str(e)}")
 
-# === Lancement du serveur ===
+# === Génération de PDF ===
+@app.post("/generate-pdf")
+def generate_pdf(job: JobInput):
+    try:
+        # Réutilise la logique de /generate
+        template_data = TEMPLATES[job.template]
+        instructions = template_data["prompt"]
+        instructions = instructions.format(
+            title=job.title,
+            department=job.department or "non spécifié"
+        )
+
+        skills_str = ", ".join(job.key_skills) if job.key_skills else "À définir"
+        benefits_str = ", ".join(job.benefits) if job.benefits else "Non spécifiés"
+        salary_info = f"Rémunération : {job.salary_band}. " if job.salary_band else ""
+        company_info = f"Contexte entreprise : {job.company_context}. " if job.company_context else ""
+        policy_info = f"Politiques RH : {job.policies}. " if job.policies else ""
+
+        prompt = f"""
+{instructions}
+
+**Informations fournies :**
+- Poste : {job.title}
+- Département : {job.department}
+- Niveau : {job.seniority}
+- Localisation : {job.location}
+- Contrat : {job.contract_type}
+- Compétences clés : {skills_str}
+- Avantages : {benefits_str}
+{salary_info}{company_info}{policy_info}
+
+**Langue :** {job.language}
+**Longueur :** {job.length}
+        """
+
+        # Appel à Groq
+        response = client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=[
+                {"role": "system", "content": "Tu es un expert RH. Génère une fiche de poste claire et inclusive."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=2000
+        )
+
+        markdown = response.choices[0].message.content.strip()
+
+        # Convertir en HTML
+        def markdown_to_html(md: str) -> str:
+            md = html.escape(md)
+            md = md.replace('\n', '<br>')
+            md = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', md)
+            md = re.sub(r'\*(.*?)\*', r'<em>\1</em>', md)
+            return f"""
+            <html>
+            <head><meta charset="UTF-8"></head>
+            <body style="font-family: Arial; line-height: 1.6; padding: 20px;">
+                <h2>Fiche de poste : {job.title}</h2>
+                <p>{md}</p>
+            </body>
+            </html>
+            """
+
+        html_content = markdown_to_html(markdown)
+
+        # Options PDF
+        options = {
+            'page-size': 'A4',
+            'margin-top': '15mm',
+            'margin-right': '15mm',
+            'margin-bottom': '15mm',
+            'margin-left': '15mm',
+            'encoding': 'UTF-8'
+        }
+
+        pdf = pdfkit.from_string(html_content, False, configuration=config, options=options)
+        filename = f"fiche_poste_{job.title.replace(' ', '_')}.pdf"
+
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur PDF : {str(e)}")
+    
+
+# === Démarrage du serveur ===
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
-
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Autorise toutes les origines (en dev)
-    allow_methods=["*"],
-    allow_headers=["*"],
-)

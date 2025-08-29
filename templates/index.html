@@ -146,7 +146,10 @@
       <h2>Fiche de poste générée</h2>
       <div id="markdown-output"></div>
       <a id="download-link" class="btn-download" style="display: none;">📥 Télécharger en Markdown</a>
-    </div>
+
+      <a id="download-pdf" class="btn-download" style="display: none;">
+        📄 Télécharger en PDF
+      </a>
   </div>
 
   <script>
@@ -154,42 +157,72 @@
     const resultDiv = document.getElementById("result");
     const markdownOutput = document.getElementById("markdown-output");
     const downloadLink = document.getElementById("download-link");
-
+    const downloadPdfButton = document.getElementById("download-pdf"); // Bouton PDF
+  
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-
+  
       const formData = new FormData(form);
       const data = Object.fromEntries(formData);
-
+  
       // Traiter les listes
       data.key_skills = data.key_skills ? data.key_skills.split(",").map(s => s.trim()) : [];
       data.benefits = data.benefits ? data.benefits.split(",").map(s => s.trim()) : [];
-
+  
       try {
+        // 1. Générer la fiche via l'API
         const response = await fetch("http://127.0.0.1:8000/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data)
         });
-
-        if (!response.ok) throw new Error("Erreur API");
-
+  
+        if (!response.ok) throw new Error("Erreur API : " + response.status);
+  
         const result = await response.json();
-        
-        // Afficher en Markdown
+  
+        // 2. Afficher la fiche en Markdown
         markdownOutput.innerHTML = marked.parse(result.markdown);
         resultDiv.style.display = "block";
-
-        // Générer le téléchargement
+  
+        // 3. Lien de téléchargement en Markdown
         const blob = new Blob([result.markdown], { type: "text/markdown" });
         const url = URL.createObjectURL(blob);
         downloadLink.href = url;
         downloadLink.download = `fiche_poste_${data.title.replace(/\s+/g, "_")}.md`;
         downloadLink.style.display = "block";
-
+  
+        // 4. Préparer le bouton PDF
+        downloadPdfButton.style.display = "block";
+  
+        // 5. Fonction pour télécharger en PDF
+        downloadPdfButton.onclick = async () => {
+          try {
+            const pdfResponse = await fetch("http://127.0.0.1:8000/generate-pdf", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data)
+            });
+  
+            if (!pdfResponse.ok) throw new Error("Échec de la génération du PDF");
+  
+            const pdfBlob = await pdfResponse.blob();
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+            const a = document.createElement("a");
+            a.href = pdfUrl;
+            a.download = `fiche_poste_${data.title.replace(/\s+/g, "_")}.pdf`;
+            a.click();
+            URL.revokeObjectURL(pdfUrl);
+          } catch (err) {
+            alert("Erreur lors du téléchargement du PDF : " + err.message);
+          }
+        };
+  
       } catch (error) {
         markdownOutput.innerHTML = `<p style="color:red;">Erreur : ${error.message}</p>`;
         resultDiv.style.display = "block";
+        downloadLink.style.display = "none";
+        downloadPdfButton.style.display = "none";
       }
     });
   </script>
